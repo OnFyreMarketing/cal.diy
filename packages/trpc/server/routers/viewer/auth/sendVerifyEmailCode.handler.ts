@@ -36,25 +36,35 @@ export const sendVerifyEmailCode = async ({
   if (input.eventTypeId && Number.isSafeInteger(input.eventTypeId) && input.eventTypeId > 0) {
     try {
       hideBranding = await getEventTypeService().shouldHideBrandingForEventType(input.eventTypeId);
-      const event =
-        !input.isVerifyingEmail &&
-        (await prisma.eventType.findUnique({
-          where: { id: input.eventTypeId },
-          select: { metadata: true, hidden: true, bookingRequiresAuthentication: true, schedulingType: true },
-        }));
-      if (
-        event &&
-        !event.hidden &&
-        !event.bookingRequiresAuthentication &&
-        event.schedulingType !== "MANAGED"
-      ) {
-        const metadata = event.metadata;
-        const branding = verificationEmailBrandingSchema.safeParse(
-          metadata && typeof metadata === "object" && !Array.isArray(metadata)
-            ? metadata.verificationEmailBranding
-            : undefined
-        );
-        if (branding.success) verificationEmailBranding = branding.data;
+      try {
+        const event =
+          !input.isVerifyingEmail &&
+          (await prisma.eventType.findUnique({
+            where: { id: input.eventTypeId },
+            select: {
+              metadata: true,
+              hidden: true,
+              bookingRequiresAuthentication: true,
+              schedulingType: true,
+            },
+          }));
+        if (
+          event &&
+          !event.hidden &&
+          !event.bookingRequiresAuthentication &&
+          event.schedulingType !== "MANAGED"
+        ) {
+          const metadata = event.metadata;
+          const branding = verificationEmailBrandingSchema.safeParse(
+            metadata && typeof metadata === "object" && !Array.isArray(metadata)
+              ? metadata.verificationEmailBranding
+              : undefined
+          );
+          if (branding.success) verificationEmailBranding = branding.data;
+        }
+      } catch {
+        // Optional label lookup must not override the resolved hide-branding policy.
+        verificationEmailBranding = undefined;
       }
     } catch {
       // Event context is optional; lookup failures must never select another event's branding.

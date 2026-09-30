@@ -201,6 +201,40 @@ ${input.language("happy_scheduling")} ${input.language("the_calcom_team", { comp
     expect(payload.subject).toBe(input.language("verify_email_subject_no_branding"));
   });
 
+  it("preserves hide-branding with a successful event label lookup", async () => {
+    mocks.hideBranding.mockResolvedValue(true);
+    mocks.findUnique.mockResolvedValue(publicEvent({ verificationEmailBranding: { label } }));
+    const { input, payload } = await send(5);
+    expect(input.hideLogo).toBe(true);
+    expect(input.verificationEmailBranding).toEqual({ label });
+    expect(payload.subject).toBe(`${input.language("verify_email_subject_no_branding")} — ${label}`);
+  });
+
+  it("preserves hide-branding and never reuses another event label when metadata lookup fails", async () => {
+    mocks.hideBranding.mockResolvedValue(true);
+    mocks.findUnique.mockResolvedValueOnce(publicEvent({ verificationEmailBranding: { label } }));
+    expect((await send(5)).input.verificationEmailBranding).toEqual({ label });
+    mocks.findUnique.mockRejectedValueOnce(new Error("synthetic metadata failure"));
+    const { input, payload } = await send(6);
+    expect(input.hideLogo).toBe(true);
+    expect(input.verificationEmailBranding).toBeUndefined();
+    expect(payload.subject).toBe(input.language("verify_email_subject_no_branding"));
+    expect(JSON.stringify(payload)).not.toContain(label);
+    expect(mocks.findUnique).toHaveBeenCalledTimes(2);
+    expect(mocks.findUnique).toHaveBeenLastCalledWith({
+      where: { id: 6 },
+      select: { metadata: true, hidden: true, bookingRequiresAuthentication: true, schedulingType: true },
+    });
+  });
+
+  it("preserves the existing default when hide-branding resolution itself fails", async () => {
+    mocks.hideBranding.mockRejectedValueOnce(new Error("synthetic policy failure"));
+    const { input } = await send(5);
+    expect(input.hideLogo).toBe(false);
+    expect(input.verificationEmailBranding).toBeUndefined();
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
   it("escapes HTML while retaining the literal label in subject and text", async () => {
     const literal = "OptiMES <Prime> & Blum";
     mocks.findUnique.mockResolvedValue(publicEvent({ verificationEmailBranding: { label: literal } }));
