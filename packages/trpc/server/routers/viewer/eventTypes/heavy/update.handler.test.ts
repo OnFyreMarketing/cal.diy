@@ -106,4 +106,69 @@ describe("verification branding metadata updates", () => {
       verificationEmailBranding: branding,
     });
   });
+
+  it("preserves nested stored config and siblings while applying parsed updates", () => {
+    const input = ZUpdateInputSchema.parse({
+      id: 5,
+      metadata: {
+        verificationEmailBranding: { label: "  Updated event label  " },
+        config: { useHostSchedulesForTeamEvent: false, injectedClientFlag: true },
+        injectedClientEntry: { value: "must not persist" },
+      },
+    });
+    expect(input.metadata?.config).toEqual({ useHostSchedulesForTeamEvent: false });
+    expect(input.metadata).not.toHaveProperty("injectedClientEntry");
+    expect(getMetadataForUpdate(saved, input.metadata)).toEqual({
+      ...saved,
+      config: { useHostSchedulesForTeamEvent: false, legacyFlag: "preserved" },
+      verificationEmailBranding: { label: "Updated event label" },
+    });
+    expect(saved.config.useHostSchedulesForTeamEvent).toBe(true);
+  });
+
+  it("merges deeper object settings and replaces arrays instead of merging their elements", () => {
+    const existing = {
+      ...saved,
+      verificationEmailBranding: branding,
+      disableStandardEmails: { all: { host: true, attendee: true }, confirmation: { host: true } },
+    };
+    const input = ZUpdateInputSchema.parse({
+      id: 5,
+      metadata: { multipleDuration: [45], disableStandardEmails: { all: { attendee: false } } },
+    });
+    expect(getMetadataForUpdate(existing, input.metadata)).toEqual({
+      ...existing,
+      multipleDuration: [45],
+      disableStandardEmails: { all: { host: true, attendee: false }, confirmation: { host: true } },
+    });
+  });
+
+  it("changes branding and removes it explicitly without clearing sibling metadata", () => {
+    const existing = { ...saved, verificationEmailBranding: branding };
+    const changed = ZUpdateInputSchema.parse({
+      id: 5,
+      metadata: { verificationEmailBranding: { label: "Changed label" } },
+    });
+    expect(getMetadataForUpdate(existing, changed.metadata)).toEqual({
+      ...saved,
+      verificationEmailBranding: { label: "Changed label" },
+    });
+    const removed = ZUpdateInputSchema.parse({ id: 5, metadata: { verificationEmailBranding: null } });
+    expect(removed.metadata?.verificationEmailBranding).toBeNull();
+    expect(getMetadataForUpdate(existing, removed.metadata)).toEqual(saved);
+    expect(getMetadataForUpdate(saved, removed.metadata)).toEqual(saved);
+  });
+
+  it("retains explicit undefined resets for other metadata fields", () => {
+    const input = ZUpdateInputSchema.parse({
+      id: 5,
+      metadata: { multipleDuration: undefined },
+    });
+    const result = getMetadataForUpdate({ ...saved, verificationEmailBranding: branding }, input.metadata);
+    expect(result).not.toHaveProperty("multipleDuration");
+    expect(result).toMatchObject({
+      config: saved.config,
+      verificationEmailBranding: branding,
+    });
+  });
 });

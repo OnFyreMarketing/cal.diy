@@ -158,9 +158,10 @@ export const verificationEmailBrandingSchema = z.object({
 const _eventTypeMetaDataSchemaWithoutApps = z.object({
   // Malformed legacy JSON must not prevent loading or booking the event.
   verificationEmailBranding: z
-    .custom<{ label: string }>()
+    .custom<{ label: string } | null>()
     .optional()
     .transform((value) => {
+      if (value === null) return null;
       const parsed = verificationEmailBrandingSchema.safeParse(value);
       return parsed.success ? parsed.data : undefined;
     }),

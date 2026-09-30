@@ -57,6 +57,36 @@ type UpdateOptions = {
 
 export type UpdateEventTypeReturn = Awaited<ReturnType<typeof updateHandler>>;
 
+function mergeMetadataObjects(
+  existing: Prisma.InputJsonObject,
+  incoming: Prisma.InputJsonObject
+): Prisma.InputJsonObject {
+  const merged = new Map(Object.entries(existing));
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === undefined) {
+      merged.delete(key);
+      continue;
+    }
+    const previous = merged.get(key);
+    if (
+      previous &&
+      typeof previous === "object" &&
+      !Array.isArray(previous) &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      merged.set(
+        key,
+        mergeMetadataObjects(previous as Prisma.InputJsonObject, value as Prisma.InputJsonObject)
+      );
+    } else {
+      merged.set(key, value);
+    }
+  }
+  return Object.fromEntries(merged);
+}
+
 export function getMetadataForUpdate(
   existing: Prisma.JsonValue,
   incoming: TUpdateInputSchema["metadata"]
@@ -64,13 +94,16 @@ export function getMetadataForUpdate(
   if (incoming === null) return Prisma.DbNull;
   if (incoming === undefined) return undefined;
   const stored = existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {};
-  // Preserve saved JSON when branding is added, or older clients omit the new optional field.
-  if (incoming.verificationEmailBranding || stored.verificationEmailBranding) {
-    return {
-      ...stored,
-      ...incoming,
-      verificationEmailBranding: incoming.verificationEmailBranding ?? stored.verificationEmailBranding,
-    } as Prisma.InputJsonObject;
+  const { verificationEmailBranding, ...metadata } = incoming;
+  // Preserve server-stored JSON; incoming values have already passed the update schema.
+  if (verificationEmailBranding !== undefined || stored.verificationEmailBranding) {
+    const merged = { ...mergeMetadataObjects(stored, metadata) };
+    if (verificationEmailBranding === null) {
+      delete merged.verificationEmailBranding;
+    } else if (verificationEmailBranding) {
+      merged.verificationEmailBranding = verificationEmailBranding;
+    }
+    return merged;
   }
   return incoming as Prisma.InputJsonObject;
 }
