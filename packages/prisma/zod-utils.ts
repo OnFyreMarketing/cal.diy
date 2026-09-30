@@ -143,7 +143,28 @@ export type BookerLayoutSettings = z.infer<typeof bookerLayouts>;
 
 export const RequiresConfirmationThresholdUnits: z.ZodType<UnitTypeLongPlural> = z.enum(["hours", "minutes"]);
 
+export const verificationEmailBrandingSchema = z.object({
+  label: z
+    .string()
+    .refine((label) =>
+      Array.from(label).every((char) => {
+        const code = char.charCodeAt(0);
+        return code > 31 && (code < 127 || code > 159) && code !== 8232 && code !== 8233;
+      })
+    )
+    .pipe(z.string().trim().min(1).max(120)),
+});
+
 const _eventTypeMetaDataSchemaWithoutApps = z.object({
+  // Malformed legacy JSON must not prevent loading or booking the event.
+  verificationEmailBranding: z
+    .custom<{ label: string } | null>()
+    .optional()
+    .transform((value) => {
+      if (value === null) return null;
+      const parsed = verificationEmailBrandingSchema.safeParse(value);
+      return parsed.success ? parsed.data : undefined;
+    }),
   smartContractAddress: z.string().optional(),
   blockchainId: z.number().optional(),
   multipleDuration: z.number().array().optional(),

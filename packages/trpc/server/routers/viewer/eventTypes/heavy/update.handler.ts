@@ -57,6 +57,57 @@ type UpdateOptions = {
 
 export type UpdateEventTypeReturn = Awaited<ReturnType<typeof updateHandler>>;
 
+function mergeMetadataObjects(
+  existing: Prisma.InputJsonObject,
+  incoming: Prisma.InputJsonObject
+): Prisma.InputJsonObject {
+  const merged = new Map(Object.entries(existing));
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === undefined) {
+      merged.delete(key);
+      continue;
+    }
+    const previous = merged.get(key);
+    if (
+      previous &&
+      typeof previous === "object" &&
+      !Array.isArray(previous) &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      merged.set(
+        key,
+        mergeMetadataObjects(previous as Prisma.InputJsonObject, value as Prisma.InputJsonObject)
+      );
+    } else {
+      merged.set(key, value);
+    }
+  }
+  return Object.fromEntries(merged);
+}
+
+export function getMetadataForUpdate(
+  existing: Prisma.JsonValue,
+  incoming: TUpdateInputSchema["metadata"]
+): Prisma.InputJsonObject | typeof Prisma.DbNull | undefined {
+  if (incoming === null) return Prisma.DbNull;
+  if (incoming === undefined) return undefined;
+  const stored = existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {};
+  const { verificationEmailBranding, ...metadata } = incoming;
+  // Preserve server-stored JSON; incoming values have already passed the update schema.
+  if (verificationEmailBranding !== undefined || stored.verificationEmailBranding) {
+    const merged = { ...mergeMetadataObjects(stored, metadata) };
+    if (verificationEmailBranding === null) {
+      delete merged.verificationEmailBranding;
+    } else if (verificationEmailBranding) {
+      merged.verificationEmailBranding = verificationEmailBranding;
+    }
+    return merged;
+  }
+  return incoming as Prisma.InputJsonObject;
+}
+
 export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
   const {
     schedule,
@@ -99,6 +150,7 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     where: { id },
     select: {
       title: true,
+      metadata: true,
       locations: true,
       description: true,
       seatsPerTimeSlot: true,
@@ -225,7 +277,7 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     isRRWeightsEnabled,
     rrSegmentQueryValue:
       rest.rrSegmentQueryValue === null ? Prisma.DbNull : (rest.rrSegmentQueryValue as Prisma.InputJsonValue),
-    metadata: rest.metadata === null ? Prisma.DbNull : (rest.metadata as Prisma.InputJsonObject),
+    metadata: getMetadataForUpdate(eventType.metadata, rest.metadata),
     eventTypeColor: eventTypeColor === null ? Prisma.DbNull : (eventTypeColor as Prisma.InputJsonObject),
     // Only set disableGuests if bookingFields is explicitly provided to avoid overwriting existing value
     ...(bookingFields !== undefined && {

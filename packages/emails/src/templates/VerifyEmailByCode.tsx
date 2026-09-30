@@ -1,35 +1,30 @@
-import {
-  APP_NAME,
-  SENDER_NAME,
-  SUPPORT_MAIL_ADDRESS,
-} from "@calcom/lib/constants";
+import { APP_NAME, SENDER_NAME, SUPPORT_MAIL_ADDRESS } from "@calcom/lib/constants";
 import type { EmailVerifyCode } from "../../lib/types/email-types";
 import { BaseEmailHtml } from "../components";
 
 export const VerifyEmailByCode = (
   props: EmailVerifyCode & Partial<React.ComponentProps<typeof BaseEmailHtml>>
 ) => {
+  const defaultSubject = props.hideLogo
+    ? props.language("verify_email_subject_no_branding")
+    : props.language(`verify_email_subject${props.isVerifyingEmail ? "_verifying_email" : ""}`, {
+        appName: APP_NAME,
+      });
+  const subject = props.verificationEmailBranding
+    ? `${defaultSubject} — ${props.verificationEmailBranding.label}`
+    : defaultSubject;
+
   return (
-    <BaseEmailHtml
-      hideLogo={props.hideLogo}
-      subject={
-        props.hideLogo
-          ? props.language("verify_email_subject_no_branding")
-          : props.language(
-              `verify_email_subject${props.isVerifyingEmail ? "_verifying_email" : ""}`,
-              { appName: APP_NAME }
-            )
-      }
-    >
+    <BaseEmailHtml hideLogo={props.hideLogo} subject={subject}>
       <p
         style={{
           fontWeight: 600,
           fontSize: "32px",
           lineHeight: "38px",
-        }}
-      >
+        }}>
         <>{props.language("verify_email_email_header")}</>
       </p>
+      {props.verificationEmailBranding && <p>{props.verificationEmailBranding.label}</p>}
       <p style={{ fontWeight: 400 }}>
         <>{props.language("hi_user_name", { name: props.user.name })}!</>
       </p>
@@ -51,8 +46,7 @@ export const VerifyEmailByCode = (
                 href={`mailto:${SUPPORT_MAIL_ADDRESS}`}
                 style={{ color: "#3E3E3E" }}
                 target="_blank"
-                rel="noreferrer"
-              >
+                rel="noreferrer">
                 <>
                   {props.language("the_calcom_team", {
                     companyName: SENDER_NAME,
