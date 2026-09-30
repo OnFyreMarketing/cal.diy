@@ -3,6 +3,8 @@ import { getEventTypeService } from "@calcom/features/eventtypes/di/EventTypeSer
 import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowError";
 import getIP from "@calcom/lib/getIP";
 import { hashEmail, piiHasher } from "@calcom/lib/server/PiiHasher";
+import { prisma } from "@calcom/prisma";
+import { verificationEmailBrandingSchema } from "@calcom/prisma/zod-utils";
 import type { NextApiRequest } from "next";
 import type { TRPCContext } from "../../../createContext";
 import type { TSendVerifyEmailCodeSchema } from "./sendVerifyEmailCode.schema";
@@ -30,9 +32,34 @@ export const sendVerifyEmailCode = async ({
   });
 
   let hideBranding = false;
-  if (input.eventTypeId) {
-    const eventTypeService = getEventTypeService();
-    hideBranding = await eventTypeService.shouldHideBrandingForEventType(input.eventTypeId);
+  let verificationEmailBranding: { label: string } | undefined;
+  if (input.eventTypeId && Number.isSafeInteger(input.eventTypeId) && input.eventTypeId > 0) {
+    try {
+      hideBranding = await getEventTypeService().shouldHideBrandingForEventType(input.eventTypeId);
+      const event =
+        !input.isVerifyingEmail &&
+        (await prisma.eventType.findUnique({
+          where: { id: input.eventTypeId },
+          select: { metadata: true, hidden: true, bookingRequiresAuthentication: true, schedulingType: true },
+        }));
+      if (
+        event &&
+        !event.hidden &&
+        !event.bookingRequiresAuthentication &&
+        event.schedulingType !== "MANAGED"
+      ) {
+        const metadata = event.metadata;
+        const branding = verificationEmailBrandingSchema.safeParse(
+          metadata && typeof metadata === "object" && !Array.isArray(metadata)
+            ? metadata.verificationEmailBranding
+            : undefined
+        );
+        if (branding.success) verificationEmailBranding = branding.data;
+      }
+    } catch {
+      // Event context is optional; lookup failures must never select another event's branding.
+      hideBranding = false;
+    }
   }
 
   return await sendEmailVerificationByCode({
@@ -41,5 +68,6 @@ export const sendVerifyEmailCode = async ({
     language: input.language,
     isVerifyingEmail: input.isVerifyingEmail,
     hideBranding,
+    verificationEmailBranding,
   });
 };

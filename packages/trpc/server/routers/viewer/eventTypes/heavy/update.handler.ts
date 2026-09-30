@@ -57,6 +57,24 @@ type UpdateOptions = {
 
 export type UpdateEventTypeReturn = Awaited<ReturnType<typeof updateHandler>>;
 
+export function getMetadataForUpdate(
+  existing: Prisma.JsonValue,
+  incoming: TUpdateInputSchema["metadata"]
+): Prisma.InputJsonObject | typeof Prisma.DbNull | undefined {
+  if (incoming === null) return Prisma.DbNull;
+  if (incoming === undefined) return undefined;
+  const stored = existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {};
+  // Preserve saved JSON when branding is added, or older clients omit the new optional field.
+  if (incoming.verificationEmailBranding || stored.verificationEmailBranding) {
+    return {
+      ...stored,
+      ...incoming,
+      verificationEmailBranding: incoming.verificationEmailBranding ?? stored.verificationEmailBranding,
+    } as Prisma.InputJsonObject;
+  }
+  return incoming as Prisma.InputJsonObject;
+}
+
 export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
   const {
     schedule,
@@ -99,6 +117,7 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     where: { id },
     select: {
       title: true,
+      metadata: true,
       locations: true,
       description: true,
       seatsPerTimeSlot: true,
@@ -225,7 +244,7 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     isRRWeightsEnabled,
     rrSegmentQueryValue:
       rest.rrSegmentQueryValue === null ? Prisma.DbNull : (rest.rrSegmentQueryValue as Prisma.InputJsonValue),
-    metadata: rest.metadata === null ? Prisma.DbNull : (rest.metadata as Prisma.InputJsonObject),
+    metadata: getMetadataForUpdate(eventType.metadata, rest.metadata),
     eventTypeColor: eventTypeColor === null ? Prisma.DbNull : (eventTypeColor as Prisma.InputJsonObject),
     // Only set disableGuests if bookingFields is explicitly provided to avoid overwriting existing value
     ...(bookingFields !== undefined && {

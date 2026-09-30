@@ -8,10 +8,10 @@ import {
 import { FeaturesRepository } from "@calcom/features/flags/features.repository";
 import { sentrySpan } from "@calcom/features/watchlist/lib/telemetry";
 import { checkIfEmailIsBlockedInWatchlistController } from "@calcom/features/watchlist/operations/check-if-email-in-watchlist.controller";
+import { getTranslation } from "@calcom/i18n/server";
 import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowError";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import logger from "@calcom/lib/logger";
-import { getTranslation } from "@calcom/i18n/server";
 import { hashEmail } from "@calcom/lib/server/PiiHasher";
 import { prisma } from "@calcom/prisma";
 import { totp } from "otplib";
@@ -27,6 +27,7 @@ interface VerifyEmailType {
   isPlatform?: boolean;
   extraParams?: Record<string, string>;
   hideBranding?: boolean;
+  verificationEmailBranding?: { label: string };
 }
 
 export const sendEmailVerification = async ({
@@ -95,6 +96,7 @@ export const sendEmailVerificationByCode = async ({
   username,
   isVerifyingEmail,
   hideBranding,
+  verificationEmailBranding,
 }: VerifyEmailType) => {
   if (await checkIfEmailIsBlockedInWatchlistController({ email, organizationId: null, span: sentrySpan })) {
     log.warn("Email is blocked - not sending verification email", email);
@@ -118,6 +120,7 @@ export const sendEmailVerificationByCode = async ({
     },
     isVerifyingEmail,
     hideLogo: hideBranding,
+    verificationEmailBranding,
   });
 
   return { ok: true, skipped: false };

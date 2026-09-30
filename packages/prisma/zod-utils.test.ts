@@ -1,7 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import z from "zod";
-
-import { excludeOrRequireEmailSchema } from "./zod-utils";
+import {
+  EventTypeMetaDataSchema,
+  excludeOrRequireEmailSchema,
+  verificationEmailBrandingSchema,
+} from "./zod-utils";
 
 describe("excludeOrRequireEmailSchema", () => {
   const parse = (input: string) => z.object({ v: excludeOrRequireEmailSchema }).safeParse({ v: input });
@@ -87,5 +90,38 @@ describe("excludeOrRequireEmailSchema", () => {
     it("rejects Unicode domains (ASCII-only)", () => {
       expect(parse("münchen.de").success).toBe(false);
     });
+  });
+});
+
+describe("verification email branding metadata", () => {
+  it("trims and bounds a valid label without changing existing schema fields", () => {
+    const original = {
+      multipleDuration: [15, 30],
+      disableSuccessPage: true,
+      disableStandardEmails: { all: { host: true, attendee: false } },
+      config: { useHostSchedulesForTeamEvent: true },
+      apps: { syntheticApp: { enabled: true, existingSetting: "preserved" } },
+    };
+    const parsed = EventTypeMetaDataSchema.parse({
+      ...original,
+      verificationEmailBranding: { label: "  OptiMES Prime / Blum Informatik  " },
+    });
+    expect(parsed).toEqual({
+      ...original,
+      verificationEmailBranding: { label: "OptiMES Prime / Blum Informatik" },
+    });
+    expect(verificationEmailBrandingSchema.parse({ label: "x".repeat(120) }).label).toHaveLength(120);
+    expect(verificationEmailBrandingSchema.safeParse({ label: "x".repeat(121) }).success).toBe(false);
+    expect(EventTypeMetaDataSchema.parse(original)).toEqual(original);
+    expect(EventTypeMetaDataSchema.parse(null)).toBeNull();
+  });
+
+  it("discards malformed legacy branding without breaking unrelated metadata", () => {
+    expect(
+      EventTypeMetaDataSchema.parse({
+        multipleDuration: [30],
+        verificationEmailBranding: { label: "bad\nlabel" },
+      })
+    ).toEqual({ multipleDuration: [30], verificationEmailBranding: undefined });
   });
 });
